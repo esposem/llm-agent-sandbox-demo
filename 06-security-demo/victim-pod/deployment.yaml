@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: payment-service
-  namespace: llm-sandbox-demo
+  namespace: victim
   labels:
     app: payment-service
     demo: hostpid-security
@@ -17,6 +17,8 @@ spec:
         app: payment-service
         demo: hostpid-security
     spec:
+      nodeSelector:
+        node-role.kubernetes.io/kata-oc: ""
       containers:
       - name: payment-service
         image: registry.access.redhat.com/ubi9/python-311:latest

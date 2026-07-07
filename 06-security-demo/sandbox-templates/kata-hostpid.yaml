@@ -23,6 +23,7 @@ spec:
           - labelSelector:
               matchLabels:
                 app: payment-service
+            namespaceSelector: {}
             topologyKey: kubernetes.io/hostname
       containers:
       - image: quay.io/eesposit/python-runtime-sandbox:latest

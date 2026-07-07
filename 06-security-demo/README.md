@@ -17,17 +17,18 @@ The pod spec is **identical** for both runtimes — same `hostPID`, same `privil
 
 ### 1. Deploy the victim pod
 
-A simulated payment service with credentials in its environment variables. Deploy this **before** the sandbox templates — the sandbox pods use pod affinity to automatically land on the same node.
+A simulated payment service in a separate namespace (`victim`) with credentials in its environment variables. It is pinned to a kata-capable node so all demo pods (victim, runc sandbox, kata sandbox) land on the same worker. Deploy this **before** the sandbox templates — the sandbox pods use pod affinity to automatically follow it.
 
 ```bash
+oc create namespace victim --dry-run=client -o yaml | oc apply -f -
 oc apply -f victim-pod/deployment.yaml
-oc rollout status deployment/payment-service -n llm-sandbox-demo
+oc rollout status deployment/payment-service -n victim
 ```
 
-Verify it's running:
+Verify it's running on a kata node:
 
 ```bash
-oc get pods -n llm-sandbox-demo -l app=payment-service -o wide
+oc get pods -n victim -l app=payment-service -o wide
 ```
 
 ### 2. Deploy RBAC (SCC + ServiceAccount)
@@ -112,8 +113,8 @@ VM isolation is working - /proc only shows this VM's processes.
 
 ## Demo Flow (recommended)
 
-1. Show the victim pod running: `oc get pods -l app=payment-service`
-2. Point out its env vars contain secrets: `oc set env deployment/payment-service --list`
+1. Show the victim pod running: `oc get pods -n victim -l app=payment-service`
+2. Point out its env vars contain secrets: `oc set env deployment/payment-service -n victim --list`
 3. Set `WARMPOOL_NAME=code-sandbox-pool-runc-hostpid` (runc)
 4. Run **Attack 1** (credential theft) — show passwords on screen
 5. Run **Attack 2** (host recon) — show real node kernel, 300+ processes, 32GB RAM

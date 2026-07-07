@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACE="llm-sandbox-demo"
+VICTIM_NAMESPACE="victim"
 WEBUI_NAMESPACE="web-ui"
 
 info()  { echo -e "\033[1;34m[INFO]\033[0m  $*"; }
@@ -40,6 +41,7 @@ oc whoami       >/dev/null || error "Not logged in to an OpenShift cluster"
 info "=== Step 1: Setting Up Namespace and Credentials ==="
 
 oc create namespace "$NAMESPACE" --dry-run=client -o yaml | oc apply -f -
+oc create namespace "$VICTIM_NAMESPACE" --dry-run=client -o yaml | oc apply -f -
 
 if ! oc get secret gcp-credentials -n "$NAMESPACE" &>/dev/null; then
     GCP_CREDS="${GCP_CREDENTIALS_FILE:-$HOME/.config/gcloud/application_default_credentials.json}"

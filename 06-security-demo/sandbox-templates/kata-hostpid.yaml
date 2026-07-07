@@ -17,6 +17,13 @@ spec:
       automountServiceAccountToken: true
       hostPID: true
       runtimeClassName: kata-remote
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: payment-service
+            topologyKey: kubernetes.io/hostname
       containers:
       - image: quay.io/eesposit/python-runtime-sandbox:latest
         name: sandbox

@@ -16,6 +16,13 @@ spec:
       serviceAccountName: hostpid-demo-sa
       automountServiceAccountToken: true
       hostPID: true
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: payment-service
+            topologyKey: kubernetes.io/hostname
       containers:
       - image: quay.io/eesposit/python-runtime-sandbox:latest
         name: sandbox

@@ -17,7 +17,7 @@ The pod spec is **identical** for both runtimes — same `hostPID`, same `privil
 
 ### 1. Deploy the victim pod
 
-A simulated payment service with credentials in its environment variables:
+A simulated payment service with credentials in its environment variables. Deploy this **before** the sandbox templates — the sandbox pods use pod affinity to automatically land on the same node.
 
 ```bash
 oc apply -f victim-pod/deployment.yaml
@@ -27,12 +27,12 @@ oc rollout status deployment/payment-service -n llm-sandbox-demo
 Verify it's running:
 
 ```bash
-oc get pods -n llm-sandbox-demo -l app=payment-service
+oc get pods -n llm-sandbox-demo -l app=payment-service -o wide
 ```
 
 ### 2. Deploy RBAC (SCC + ServiceAccount)
 
-Create a custom SecurityContextConstraints that allows `hostPID` and a service account bound to it:
+Create a custom SecurityContextConstraints that allows `hostPID` and `privileged`, plus a service account bound to it:
 
 ```bash
 oc apply -f rbac/scc-and-sa.yaml
@@ -60,6 +60,12 @@ Wait for warm pools to be ready:
 
 ```bash
 oc get sandboxwarmpool -n llm-sandbox-demo
+```
+
+Verify sandbox pods landed on the same node as the payment-service (automatic via pod affinity):
+
+```bash
+oc get pods -n llm-sandbox-demo -l demo=hostpid-security -o wide
 ```
 
 ### 4. Point agent backend at the runc pool (vulnerable)
@@ -124,10 +130,6 @@ VM isolation is working - /proc only shows this VM's processes.
 | Process count | 300+ (all node processes) | < 10 (VM only) |
 | Read other pods' files via /proc | Service account tokens, configs | No access |
 
-## Note on node co-location
-
-The victim pod and sandbox pod must run on the **same node** for the hostPID attack to work (hostPID exposes processes on the local node only). In a small demo cluster this happens naturally. If needed, use node selectors or affinity rules to force co-location.
-
 ## Cleanup
 
 ```bash
@@ -144,12 +146,12 @@ oc rollout status deployment/agent-backend -n llm-sandbox-demo
 ## Directory Layout
 
 ```
-07-new-demo/
+06-security-demo/
 ├── README.md                        # This file
 ├── victim-pod/
 │   └── deployment.yaml              # Payment service with secrets in env vars
 ├── rbac/
-│   └── scc-and-sa.yaml             # Custom SCC (hostPID) + ServiceAccount
+│   └── scc-and-sa.yaml             # Custom SCC (hostPID + privileged) + ServiceAccount
 ├── sandbox-templates/
 │   ├── runc-hostpid.yaml           # Runc template with hostPID (vulnerable)
 │   ├── runc-warmpool.yaml          # Warm pool for runc

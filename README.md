@@ -143,6 +143,27 @@ Edit `02-sandbox/sandbox-template.yaml` to adjust CPU, memory, installed package
 3. Click the **Run** button on any code block to execute it in a sandbox
 4. View stdout/stderr output directly below the code block
 
+## Security Demo: Kata vs Runc
+
+The [`06-security-demo/`](06-security-demo/) directory contains a ready-to-run demonstration of why Kata Containers are essential for running untrusted code. It deploys a victim pod with credentials in its environment variables and lets you run AI-generated attack code in both runc and kata sandboxes.
+
+**With runc** (shared kernel): the attack scans `/proc` and steals database passwords, Stripe keys, and AWS credentials from other pods on the same node.
+
+**With kata** (VM isolation): the same code, same pod spec, same privileges — but `/proc` only shows VM-internal processes. The attack finds nothing.
+
+```bash
+# Deploy victim pod, RBAC, and sandbox templates
+oc apply -f 06-security-demo/victim-pod/deployment.yaml
+oc apply -f 06-security-demo/rbac/scc-and-sa.yaml
+oc apply -f 06-security-demo/sandbox-templates/
+
+# Switch between runtimes
+oc set env deployment/agent-backend -n llm-sandbox-demo WARMPOOL_NAME=code-sandbox-pool-runc-hostpid  # vulnerable
+oc set env deployment/agent-backend -n llm-sandbox-demo WARMPOOL_NAME=code-sandbox-pool-kata-hostpid  # protected
+```
+
+See [`06-security-demo/README.md`](06-security-demo/README.md) for the full walkthrough, attack payloads, and expected output.
+
 ## Troubleshooting
 
 ```bash

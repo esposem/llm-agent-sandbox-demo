@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: llm-sandbox-demo
+  labels:
+    app: payment-service
+    demo: hostpid-security
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        demo: hostpid-security
+    spec:
+      containers:
+      - name: payment-service
+        image: registry.access.redhat.com/ubi9/python-311:latest
+        command: ["python3", "-c", "import time; print('Payment service running...'); [time.sleep(3600) for _ in iter(int, 1)]"]
+        env:
+        - name: DB_HOST
+          value: "prod-payments-db.internal.corp.net"
+        - name: DB_USER
+          value: "payments_admin"
+        - name: DB_PASSWORD
+          value: "xK9#mP2$vL5nQ8wR!jF3"
+        - name: STRIPE_SECRET_KEY
+          value: "sk_live_51Hb3gK2eZvKYlo2C0EXAMPLE"
+        - name: STRIPE_WEBHOOK_SECRET
+          value: "whsec_5GaP9kR2mN7xJ1vQ4bEXAMPLE"
+        - name: AWS_ACCESS_KEY_ID
+          value: "AKIAIOSFODNN7EXAMPLE"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        - name: ENCRYPTION_MASTER_KEY
+          value: "aes-256-gcm:dGhpcyBpcyBhIGRlbW8ga2V5"
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi

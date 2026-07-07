@@ -1,11 +1,11 @@
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: code-sandbox-pool-kata-sa
+  name: code-sandbox-pool-kata-hostpid
   namespace: llm-sandbox-demo
 spec:
   replicas: 2
   sandboxTemplateRef:
-    name: code-execution-template-kata-sa
+    name: code-execution-template-kata-hostpid
   updateStrategy:
     type: OnReplenish

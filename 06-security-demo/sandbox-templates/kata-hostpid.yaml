@@ -1,7 +1,7 @@
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: code-execution-template-runc-sa
+  name: code-execution-template-kata-hostpid
   namespace: llm-sandbox-demo
 spec:
   envVarsInjectionPolicy: Allowed
@@ -10,14 +10,18 @@ spec:
     metadata:
       labels:
         app: code-sandbox
-        runtime: runc
-        demo: security
+        runtime: kata
+        demo: hostpid-security
     spec:
-      serviceAccountName: sandbox-demo-sa
+      serviceAccountName: hostpid-demo-sa
       automountServiceAccountToken: true
+      hostPID: true
+      runtimeClassName: kata-remote
       containers:
       - image: quay.io/eesposit/python-runtime-sandbox:latest
         name: sandbox
+        securityContext:
+          privileged: true
         ports:
         - containerPort: 8888
           protocol: TCP

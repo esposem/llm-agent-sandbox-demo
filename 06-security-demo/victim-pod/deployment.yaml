@@ -25,21 +25,21 @@ spec:
         command: ["python3", "-c", "import time; print('Payment service running...'); [time.sleep(3600) for _ in iter(int, 1)]"]
         env:
         - name: DB_HOST
-          value: "prod-payments-db.internal.corp.net"
+          value: "prod-payments-db.internal.corp.net" # notsecret
         - name: DB_USER
-          value: "payments_admin"
+          value: "payments_admin" # notsecret
         - name: DB_PASSWORD
-          value: "xK9#mP2$vL5nQ8wR!jF3"
+          value: "xK9#mP2$vL5nQ8wR!jF3" # notsecret
         - name: STRIPE_SECRET_KEY
-          value: "sk_live_51Hb3gK2eZvKYlo2C0EXAMPLE"
+          value: "sk_live_51Hb3gK2eZvKYlo2C0EXAMPLE" # notsecret
         - name: STRIPE_WEBHOOK_SECRET
-          value: "whsec_5GaP9kR2mN7xJ1vQ4bEXAMPLE"
+          value: "whsec_5GaP9kR2mN7xJ1vQ4bEXAMPLE" # notsecret
         - name: AWS_ACCESS_KEY_ID
-          value: "AKIAIOSFODNN7EXAMPLE"
+          value: "AKIAIOSFODNN7EXAMPLE" # notsecret
         - name: AWS_SECRET_ACCESS_KEY
-          value: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+          value: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" # notsecret
         - name: ENCRYPTION_MASTER_KEY
-          value: "aes-256-gcm:dGhpcyBpcyBhIGRlbW8ga2V5"
+          value: "aes-256-gcm:dGhpcyBpcyBhIGRlbW8ga2V5" # notsecret
         resources:
           limits:
             cpu: 200m

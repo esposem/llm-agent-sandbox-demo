@@ -25,6 +25,10 @@ GCP_CREDENTIALS_PATH = os.environ.get(
     "/etc/gcp/application_default_credentials.json",
 )
 
+LLM_API_URL = os.environ.get("LLM_API_URL", "").rstrip("/")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+USE_OPENAI_API = bool(LLM_API_URL)
+
 SYSTEM_PROMPT = (
     "You are a helpful coding assistant. When asked to write code, always show it "
     "in a fenced markdown code block with the language tag (e.g. ```python). "
@@ -40,6 +44,10 @@ _token_expiry = 0
 @app.on_event("startup")
 async def startup():
     global sandbox_client
+    if USE_OPENAI_API:
+        logger.info("LLM mode: OpenAI-compatible API at %s (model: %s)", LLM_API_URL, MODEL_NAME)
+    else:
+        logger.info("LLM mode: Vertex AI (project: %s, region: %s, model: %s)", VERTEX_PROJECT, VERTEX_REGION, MODEL_NAME)
     verify_warmpool()
     try:
         sandbox_client = create_client()
@@ -213,7 +221,41 @@ def _anthropic_response_to_openai(response: dict) -> dict:
     }
 
 
-async def call_llm(messages: list, tools: list = None) -> dict:
+async def _call_openai_api(messages: list, openai_tools: list = None) -> dict:
+    body = {
+        "model": MODEL_NAME,
+        "messages": messages,
+        "max_tokens": MAX_TOKENS,
+        "temperature": 0.1,
+    }
+    if openai_tools:
+        body["tools"] = openai_tools
+        body["tool_choice"] = "auto"
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                f"{LLM_API_URL}/chat/completions",
+                json=body,
+                headers={
+                    "Authorization": f"Bearer {LLM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+            )
+            if resp.status_code in (429, 503, 529):
+                wait = 2 ** attempt * 5
+                logger.warning("LLM API returned %d, retrying in %ds (attempt %d/%d)",
+                               resp.status_code, wait, attempt + 1, max_retries)
+                await asyncio.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp.json()
+
+    raise Exception(f"LLM API failed after {max_retries} retries")
+
+
+async def _call_vertex_api(messages: list, tools: list = None) -> dict:
     system, anthropic_messages = _openai_messages_to_anthropic(messages)
     token = _refresh_access_token()
 
@@ -257,6 +299,12 @@ async def call_llm(messages: list, tools: list = None) -> dict:
     raise Exception(f"Vertex AI API failed after {max_retries} retries")
 
 
+async def call_llm(messages: list, tools: list = None, openai_tools: list = None) -> dict:
+    if USE_OPENAI_API:
+        return await _call_openai_api(messages, openai_tools)
+    return await _call_vertex_api(messages, tools)
+
+
 def _sse_chunk(chat_id, model, delta, finish_reason):
     return "data: {}\n\n".format(json.dumps({
         "id": chat_id,
@@ -267,7 +315,43 @@ def _sse_chunk(chat_id, model, delta, finish_reason):
     }))
 
 
-async def _stream_from_vertex(messages, tools=None, original_body=None):
+async def _stream_openai(messages, original_body=None):
+    body = {
+        "model": MODEL_NAME,
+        "stream": True,
+        "messages": messages,
+        "max_tokens": MAX_TOKENS,
+        "temperature": 0.1,
+    }
+    openai_tools = (original_body or {}).get("tools", [])
+    if openai_tools:
+        body["tools"] = openai_tools
+        body["tool_choice"] = "auto"
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=30.0)) as client:
+            async with client.stream(
+                "POST", f"{LLM_API_URL}/chat/completions", json=body,
+                headers={
+                    "Authorization": f"Bearer {LLM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if line:
+                        yield f"{line}\n\n"
+
+    except Exception as e:
+        logger.exception("Streaming from LLM API failed")
+        chat_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+        model = (original_body or {}).get("model", MODEL_NAME)
+        yield _sse_chunk(chat_id, model, {"content": f"\n\nError: {e}"}, None)
+        yield _sse_chunk(chat_id, model, {}, "stop")
+        yield "data: [DONE]\n\n"
+
+
+async def _stream_vertex(messages, tools=None, original_body=None):
     chat_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     model = (original_body or {}).get("model", MODEL_NAME)
 
@@ -376,13 +460,14 @@ async def chat_completions(request: Request):
     anthropic_tools = _openai_tools_to_anthropic(openai_tools) if openai_tools else []
 
     if stream:
-        return StreamingResponse(
-            _stream_from_vertex(messages, anthropic_tools or None, body),
-            media_type="text/event-stream",
-        )
+        if USE_OPENAI_API:
+            gen = _stream_openai(messages, body)
+        else:
+            gen = _stream_vertex(messages, anthropic_tools or None, body)
+        return StreamingResponse(gen, media_type="text/event-stream")
 
     try:
-        result = await call_llm(messages, anthropic_tools or None)
+        result = await call_llm(messages, anthropic_tools or None, openai_tools or None)
         choice = result["choices"][0]
         msg = choice["message"]
         finish_reason = choice.get("finish_reason", "stop")

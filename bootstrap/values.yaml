@@ -11,3 +11,8 @@ llm:
   model: granite-3-2-8b-instruct
   apiUrl: ""
   apiKey: ""
+
+vertex:
+  enabled: false
+  project: ""
+  region: us-east5

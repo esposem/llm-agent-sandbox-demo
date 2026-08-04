@@ -93,12 +93,11 @@ def verify_warmpool():
         logger.info("Warm pool '%s' found in namespace '%s'", WARMPOOL_NAME, NAMESPACE)
     except client.ApiException as e:
         if e.status == 404:
-            logger.error(
+            logger.warning(
                 "Warm pool '%s' not found in namespace '%s'. "
-                "Create it before starting the agent backend.",
+                "Sandbox execution will fail until it is created.",
                 WARMPOOL_NAME, NAMESPACE,
             )
-            sys.exit(1)
         else:
             logger.warning("Cannot verify warm pool (HTTP %s): %s", e.status, e.reason)
 

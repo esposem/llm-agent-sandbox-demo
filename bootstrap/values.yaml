@@ -1,0 +1,13 @@
+backend:
+  namespace: llm-sandbox-demo
+  image: quay.io/eesposit/agent-backend:latest
+  warmPoolName: code-sandbox-pool
+
+ui:
+  namespace: web-ui
+  image: docker.io/nginxinc/nginx-unprivileged:1.27-alpine
+
+llm:
+  model: granite-3-2-8b-instruct
+  apiUrl: ""
+  apiKey: ""

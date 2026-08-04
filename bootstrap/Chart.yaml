@@ -1,0 +1,5 @@
+apiVersion: v2
+name: llm-agent-sandbox-demo
+description: Chat UI + Agent Backend for the Agent Sandbox workshop
+version: 0.1.0
+type: application

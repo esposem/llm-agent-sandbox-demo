@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chat-ui-files
+  namespace: {{ .Values.ui.namespace }}
+data:
+  nginx.conf: |
+    server {
+        listen 8080;
+        server_name _;
+
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+
+        location /v1/ {
+            proxy_pass http://agent-backend.{{ .Values.backend.namespace }}.svc.cluster.local:8000;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+            chunked_transfer_encoding on;
+        }
+
+        location /health {
+            proxy_pass http://agent-backend.{{ .Values.backend.namespace }}.svc.cluster.local:8000;
+            proxy_http_version 1.1;
+        }
+    }
+  index.html: |
+{{ .Files.Get "files/index.html" | indent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chat-ui
+  namespace: {{ .Values.ui.namespace }}
+spec:
+  selector:
+    app: chat-ui
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-ui
+  namespace: {{ .Values.ui.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chat-ui
+  template:
+    metadata:
+      labels:
+        app: chat-ui
+    spec:
+      containers:
+      - name: nginx
+        image: {{ .Values.ui.image }}
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 128Mi
+        volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html/index.html
+          subPath: index.html
+          readOnly: true
+        - name: nginx-conf
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: nginx.conf
+          readOnly: true
+      volumes:
+      - name: html
+        configMap:
+          name: chat-ui-files
+          items:
+          - key: index.html
+            path: index.html
+      - name: nginx-conf
+        configMap:
+          name: chat-ui-files
+          items:
+          - key: nginx.conf
+            path: nginx.conf
+---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: chat-ui
+  namespace: {{ .Values.ui.namespace }}
+spec:
+  to:
+    kind: Service
+    name: chat-ui
+    weight: 100
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

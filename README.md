@@ -1,35 +1,42 @@
 # LLM Agent Sandbox Demo
 
-An end-to-end demo on OpenShift that lets you chat with Claude through a custom chat UI. When you ask it to write code, you can execute it in isolated sandbox pods running on the `kata-remote` runtime via the [Agent Sandbox Operator](https://github.com/openshift/kubernetes-sigs-agent-sandbox).
+An end-to-end demo on OpenShift that lets you chat with an LLM through a custom chat UI. When you ask it to write code, you can execute it in isolated sandbox pods via the [Agent Sandbox Operator](https://github.com/openshift/kubernetes-sigs-agent-sandbox). A built-in security demo shows why Kata Containers matter: the same attack code steals credentials with runc but finds nothing with `kata-remote` VM isolation.
 
 ## Architecture
 
 ```
 ┌─────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   Chat UI   │────▶│  Agent Backend   │────▶│  Claude Sonnet 4 │
-│  (Browser)  │◀────│  (FastAPI proxy) │◀────│  (Vertex AI)     │
+│   Chat UI   │────▶│  Agent Backend   │────▶│  LLM (LiteMaaS   │
+│  (Browser)  │◀────│  (FastAPI proxy) │◀────│  or Vertex AI)   │
 └──────┬──────┘     └───────┬──────────┘     └──────────────────┘
        │                    │
   click "Run"          execute code
        │                    │
        └───────────▶┌───────▼──────────┐
                     │  Sandbox Claim   │
-                    │  (kata-remote)   │
+                    │  (runc or kata)  │
                     │                  │
                     │  ┌────────────┐  │
                     │  │ Python pod │  │  ◀── from Warm Pool (2 ready)
                     │  └────────────┘  │
                     └──────────────────┘
+
+Namespaces:
+  llm-sandbox-demo   ─ agent-backend Deployment + ServiceAccount
+  web-ui             ─ chat UI (nginx) + Route
+  runc-warmpool      ─ SandboxTemplate (runc, hostPID) + WarmPool
+  kata-warmpool      ─ SandboxTemplate (kata-remote, hostPID) + WarmPool
+  victim             ─ payment-service with fake credentials (security demo)
 ```
 
 **Flow:**
 1. User chats in the Chat UI
 2. Messages stream to the Agent Backend (OpenAI-compatible API proxy)
-3. Agent Backend converts messages to the Anthropic Messages API and calls Claude via Vertex AI `rawPredict`
-4. Claude responds with code in fenced markdown blocks
+3. Agent Backend calls the LLM (via LiteMaaS, Vertex AI, or any OpenAI-compatible endpoint)
+4. The LLM responds with code in fenced markdown blocks
 5. The Chat UI renders code blocks with syntax highlighting and a **Run** button
 6. Clicking Run sends the code to `/v1/sandbox/execute`, which:
-   - Claims a pre-warmed sandbox pod from the warm pool
+   - Claims a pre-warmed sandbox pod from the warm pool in `SANDBOX_NAMESPACE`
    - Auto-installs any missing Python packages
    - Writes and runs the code inside the sandbox
    - Returns stdout/stderr back to the UI
@@ -38,148 +45,190 @@ An end-to-end demo on OpenShift that lets you chat with Claude through a custom 
 
 | Component | Description |
 |-----------|-------------|
-| **Claude Sonnet 4** | Anthropic's model accessed via Google Vertex AI `rawPredict` endpoint |
-| **Agent Backend** | Python FastAPI service that proxies OpenAI-format chat requests to Anthropic's API and handles sandbox code execution |
-| **Agent Sandbox Operator** | Creates and manages isolated sandbox pods (pre-installed) |
-| **Warm Pool** | 2 pre-warmed `kata-remote` pods ready for instant code execution |
-| **Chat UI** | Lightweight single-page chat app (nginx + HTML) with streaming, syntax highlighting, and Run buttons on code blocks |
+| **Agent Backend** | Python FastAPI service that proxies OpenAI-format chat requests to the LLM and handles sandbox code execution |
+| **Agent Sandbox Operator** | Creates and manages isolated sandbox pods (installed by the Helm chart) |
+| **Warm Pools** | 2 pre-warmed pods in each namespace (`runc-warmpool` and `kata-warmpool`) ready for instant code execution |
+| **Chat UI** | Lightweight single-page chat app (nginx + HTML) with streaming, syntax highlighting, and Run buttons |
+| **OSC (OpenShift Sandboxed Containers)** | Provides the `kata-remote` RuntimeClass for VM-isolated sandboxes (installed by Ansible workload) |
 
-## Prerequisites
+## Deployment Modes
 
-- OpenShift 4.14+ cluster (no GPU required)
-- `oc` CLI logged into the cluster as cluster-admin
-- Red Hat Build of Agent Sandbox Operator already installed
-- `kata-remote` RuntimeClass available (via OpenShift Sandboxed Containers operator with peer pods)
-- GCP project with Anthropic models enabled on Vertex AI
-- GCP application default credentials (`gcloud auth application-default login`)
+### Workshop / RHDP (Helm chart via ArgoCD)
 
-## Deploy
+For the agent-sandbox workshop on RHDP, everything is deployed automatically:
+
+1. **AgnosticV** provisions an ARO cluster and runs infra workloads:
+   - OpenShift GitOps (ArgoCD)
+   - LiteMaaS (LLM access)
+   - `ocp4_workload_osc_configure_aro` (installs OSC, configures peer pods, creates `kata-remote` RuntimeClass)
+   - `ocp4_workload_gitops_bootstrap` (creates ArgoCD Application pointing to `bootstrap/`)
+   - Showroom (workshop instructions)
+
+2. **ArgoCD** syncs the **Helm chart** in `bootstrap/`, which deploys:
+   - Agent Sandbox operator (Namespace + OperatorGroup + Subscription)
+   - Namespaces: `llm-sandbox-demo`, `web-ui`, `runc-warmpool`, `kata-warmpool`, `victim`
+   - Agent backend with `SANDBOX_NAMESPACE=runc-warmpool`
+   - Chat UI with Route
+   - SandboxTemplates and WarmPools in both runc and kata namespaces
+   - Victim payment-service pod (security demo)
+   - SCC and RBAC for the hostPID security demo
+
+Helm values are injected by agnosticv via `ocp4_workload_gitops_bootstrap_helm_values`.
+
+### Manual (deploy.sh)
+
+For local development or standalone clusters:
 
 ```bash
 ./deploy.sh
 ```
 
-The script will:
-1. Create the namespace and a Kubernetes secret from your GCP credentials
-2. Create a SandboxTemplate (kata-remote) and WarmPool (2 replicas)
-3. Deploy the Agent Backend (pre-built image from `quay.io/eesposit/agent-backend`)
-4. Deploy the Chat UI with an OpenShift Route
-5. Wait for the sandbox warm pool to be ready
+Prerequisites:
+- OpenShift 4.14+ cluster
+- `oc` CLI logged in as cluster-admin
+- Agent Sandbox operator already installed
+- For kata demo: OSC operator installed with `kata-remote` RuntimeClass (see `01-operators/`)
+- LLM endpoint (set `LLM_API_KEY` env var, or GCP credentials for Vertex AI)
 
-### GCP Credentials
+## Helm Chart (bootstrap/)
 
-The deploy script looks for credentials at `$GCP_CREDENTIALS_FILE`, falling back to `~/.config/gcloud/application_default_credentials.json`. To set up:
+The `bootstrap/` directory contains a Helm chart deployed by ArgoCD:
 
-```bash
-gcloud auth application-default login
-# or
-export GCP_CREDENTIALS_FILE=/path/to/your/credentials.json
+```
+bootstrap/
+├── Chart.yaml
+├── values.yaml              # defaults (overridden by agnosticv)
+├── files/
+│   └── index.html           # chat UI page
+└── templates/
+    ├── namespaces.yaml       # llm-sandbox-demo, web-ui
+    ├── agent-sandbox-operator.yaml  # operator install (sync-wave 0-1)
+    ├── agent-backend.yaml    # SA, Deployment, Service
+    ├── chat-ui.yaml          # ConfigMap, Deployment, Service, Route
+    └── sandbox.yaml          # warm pool namespaces, victim pod, SCC,
+                              # SandboxTemplates, WarmPools, RBAC
 ```
 
-The credentials are stored as a Kubernetes secret (`gcp-credentials`) and mounted into the agent-backend pod. They are **not** stored in this repository (blocked by `.gitignore`).
+Key values:
 
-## Manual Deployment
+```yaml
+backend:
+  namespace: llm-sandbox-demo
+  image: quay.io/eesposit/agent-backend:latest
+  warmPoolName: code-sandbox-pool
 
-If you prefer to deploy step-by-step:
+llm:
+  model: granite-3-2-8b-instruct
+  apiUrl: ""       # LiteMaaS endpoint (injected by agnosticv)
+  apiKey: ""       # LiteMaaS key (injected by agnosticv)
+
+sandbox:
+  runcNamespace: runc-warmpool
+  kataNamespace: kata-warmpool
+
+agentSandbox:
+  channel: preview-0.9
+  sandboxImage: quay.io/eesposit/python-runtime-sandbox:latest
+  warmPoolReplicas: 2
+```
+
+## Switching Between Runtimes
+
+The agent-backend reads `SANDBOX_NAMESPACE` to decide which warm pool to claim sandboxes from. Both pools are pre-built and ready at deploy time.
 
 ```bash
-# 1. Namespace & GCP credentials
-oc create namespace llm-sandbox-demo
-oc create secret generic gcp-credentials \
-  --from-file=application_default_credentials.json=$HOME/.config/gcloud/application_default_credentials.json \
-  -n llm-sandbox-demo
+# Switch to kata-remote (VM isolation)
+./06-security-demo/switch-to-kata.sh
 
-# 2. Sandbox Warm Pool
-oc apply -f 02-sandbox/sandbox-template.yaml
-oc apply -f 02-sandbox/warm-pool.yaml
-
-# 3. Agent Backend
-oc apply -f 04-agent-backend/deployment.yaml
-
-# 4. Chat UI
-oc create configmap chat-ui-files \
-  --from-file=index.html=05-chat-ui/index.html \
-  --from-file=nginx.conf=05-chat-ui/nginx.conf \
-  -n llm-sandbox-demo --dry-run=client -o yaml | oc apply -f -
-oc apply -f 05-chat-ui/deployment.yaml
+# Switch back to runc
+./06-security-demo/switch-to-runc.sh
 ```
+
+These scripts patch the `SANDBOX_NAMESPACE` env var on the agent-backend Deployment and wait for the rollout. ArgoCD self-heal is disabled, so the env var change persists.
+
+## Security Demo
+
+The security demo is deployed as part of the Helm chart (no extra steps needed). It includes:
+
+- A **victim** `payment-service` pod in the `victim` namespace with fake credentials in env vars
+- **hostPID + privileged** SCC bound to sandbox service accounts in both warm pool namespaces
+- SandboxTemplates with `hostPID: true` and pod affinity to land on the same node as the victim
+
+**Workshop flow:**
+1. Run normal code (Fibonacci, data analysis) — sandboxes work with runc
+2. Run attack code — read `/proc/<pid>/environ` to steal the victim's credentials (works with runc)
+3. Switch to kata: `./06-security-demo/switch-to-kata.sh`
+4. Re-run the same attack — kata VM isolation blocks it, `/proc` only shows VM processes
+
+See [`06-security-demo/README.md`](06-security-demo/README.md) for attack payloads and expected output.
 
 ## Configuration
 
 ### Changing the Model
 
-Edit `04-agent-backend/deployment.yaml` and update the environment variables:
+In workshop mode, the model is configured via agnosticv (LiteMaaS). For manual deployment, edit `04-agent-backend/deployment.yaml`:
 
 ```yaml
 env:
   - name: MODEL_NAME
-    value: "claude-sonnet-4@20250514"  # change to another Anthropic model
-  - name: VERTEX_REGION
-    value: "us-east5"                   # must support rawPredict
-  - name: VERTEX_PROJECT
-    value: "your-gcp-project"
+    value: "granite-3-2-8b-instruct"
+  - name: LLM_API_URL
+    value: "https://your-endpoint/v1"
+  - name: LLM_API_KEY
+    value: "your-key"
 ```
 
 ### Warm Pool Size
 
-Edit `02-sandbox/warm-pool.yaml`:
-
-```yaml
-spec:
-  replicas: 5  # increase for higher concurrency
-```
-
-### Sandbox Resources
-
-Edit `02-sandbox/sandbox-template.yaml` to adjust CPU, memory, installed packages, or the container image.
-
-## Usage
-
-1. Open the URL printed at the end of `deploy.sh` (or run `oc get route chat-ui -n llm-sandbox-demo`)
-2. Try prompts like:
-   - "Write a Python script that calculates the first 20 Fibonacci numbers"
-   - "Create a bash script that shows system information"
-   - "Write a Python program that generates a random maze and solves it"
-3. Click the **Run** button on any code block to execute it in a sandbox
-4. View stdout/stderr output directly below the code block
-
-## Security Demo: Kata vs Runc
-
-The [`06-security-demo/`](06-security-demo/) directory contains a ready-to-run demonstration of why Kata Containers are essential for running untrusted code. It deploys a victim pod with credentials in its environment variables and lets you run AI-generated attack code in both runc and kata sandboxes.
-
-**With runc** (shared kernel): the attack scans `/proc` and steals database passwords, Stripe keys, and AWS credentials from other pods on the same node.
-
-**With kata** (VM isolation): the same code, same pod spec, same privileges — but `/proc` only shows VM-internal processes. The attack finds nothing.
-
-```bash
-# Deploy victim pod, RBAC, and sandbox templates
-oc apply -f 06-security-demo/victim-pod/deployment.yaml
-oc apply -f 06-security-demo/rbac/scc-and-sa.yaml
-oc apply -f 06-security-demo/sandbox-templates/
-
-# Switch between runtimes
-oc set env deployment/agent-backend -n llm-sandbox-demo WARMPOOL_NAME=code-sandbox-pool-runc-hostpid  # vulnerable
-oc set env deployment/agent-backend -n llm-sandbox-demo WARMPOOL_NAME=code-sandbox-pool-kata-hostpid  # protected
-```
-
-See [`06-security-demo/README.md`](06-security-demo/README.md) for the full walkthrough, attack payloads, and expected output.
+In the Helm chart, set `agentSandbox.warmPoolReplicas` in `bootstrap/values.yaml`. For manual deployment, edit `02-sandbox/warm-pool.yaml`.
 
 ## Troubleshooting
 
 ```bash
-# Check all pods
+# Check pods across all demo namespaces
 oc get pods -n llm-sandbox-demo
+oc get pods -n runc-warmpool
+oc get pods -n kata-warmpool
+oc get pods -n web-ui
+oc get pods -n victim
 
 # Check agent backend logs
 oc logs -n llm-sandbox-demo -l app=agent-backend
 
 # Check warm pool status
-oc get sandboxwarmpools -n llm-sandbox-demo
-oc get sandboxes -n llm-sandbox-demo
+oc get sandboxwarmpools -n runc-warmpool
+oc get sandboxwarmpools -n kata-warmpool
+oc get sandboxes -n runc-warmpool
 
-# Check chat UI logs
-oc logs -n llm-sandbox-demo -l app=chat-ui
+# Check which namespace the agent-backend targets
+oc get deployment agent-backend -n llm-sandbox-demo -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -m json.tool
 
-# Verify GCP credentials secret exists
-oc get secret gcp-credentials -n llm-sandbox-demo
+# Check ArgoCD sync status (workshop mode)
+oc get application -n openshift-gitops
+```
+
+## Directory Layout
+
+```
+llm-agent-sandbox-demo/
+├── deploy.sh                    # Manual deployment script
+├── bootstrap/                   # Helm chart (deployed by ArgoCD in workshop mode)
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   ├── files/index.html
+│   └── templates/
+├── 01-operators/                # Operator install scripts (reference / manual use)
+│   ├── agent-sandbox/
+│   └── openshift-sandboxed-containers/
+├── 02-sandbox/                  # Standalone sandbox template + warm pool YAMLs
+├── 03-sandbox-app/              # Sandbox container image (Dockerfile + Python)
+├── 04-agent-backend/            # Agent backend (FastAPI app + Dockerfile)
+├── 05-chat-ui/                  # Chat UI (HTML + nginx config)
+└── 06-security-demo/            # Security demo (switch scripts, attack payloads)
+    ├── switch-to-kata.sh
+    ├── switch-to-runc.sh
+    ├── victim-pod/
+    ├── rbac/
+    ├── sandbox-templates/
+    └── attack-payloads/
 ```

@@ -13,74 +13,42 @@ The sandbox pod runs with `hostPID: true` and `privileged: true`. In runc, this 
 
 The pod spec is **identical** for both runtimes — same `hostPID`, same `privileged`, same service account. The only difference is `runtimeClassName: kata-remote`. Kata neutralizes the dangerous pod spec at the hardware level.
 
-## Quick Start
+## How It Works
 
-### 1. Deploy the victim pod
+In the workshop deployment (Helm chart via ArgoCD), the security demo is **pre-deployed** as part of the chart — no manual setup needed. The Helm chart creates:
 
-A simulated payment service in a separate namespace (`victim`) with credentials in its environment variables. It is pinned to a kata-capable node so all demo pods (victim, runc sandbox, kata sandbox) land on the same worker. Deploy this **before** the sandbox templates — the sandbox pods use pod affinity to automatically follow it.
+- **Two warm pool namespaces**: `runc-warmpool` (runc runtime) and `kata-warmpool` (kata-remote runtime)
+- **Victim pod**: `payment-service` in the `victim` namespace with fake credentials in env vars
+- **SCC**: `sandbox-hostpid-demo` granting `hostPID` + `privileged` to sandbox SAs in both namespaces
+- **SandboxTemplates**: `code-execution-template` in each namespace (runc vs kata-remote), with pod affinity to the victim node
+- **WarmPools**: `code-sandbox-pool` in each namespace (2 replicas each)
+- **RBAC**: `agent-backend` SA in `llm-sandbox-demo` has `sandbox-manager` Role in both namespaces
 
-```bash
-oc create namespace victim --dry-run=client -o yaml | oc apply -f -
-oc apply -f victim-pod/deployment.yaml
-oc rollout status deployment/payment-service -n victim
-```
+The agent-backend reads `SANDBOX_NAMESPACE` to decide which warm pool to claim pods from. Switching runtimes is a single env var change — no resources are created or deleted.
 
-Verify it's running on a kata node:
+## Quick Start (Workshop Mode)
 
-```bash
-oc get pods -n victim -l app=payment-service -o wide
-```
+Everything is already deployed. Just run the switch scripts:
 
-### 2. Deploy RBAC (SCC + ServiceAccount)
-
-Create a custom SecurityContextConstraints that allows `hostPID` and `privileged`, plus a service account bound to it:
+### 1. Verify the victim pod is running
 
 ```bash
-oc apply -f rbac/scc-and-sa.yaml
+oc get pods -n victim -l app=payment-service
+oc set env deployment/payment-service -n victim --list
 ```
 
-This creates:
-- **ServiceAccount**: `hostpid-demo-sa`
-- **SCC**: `sandbox-hostpid-demo` (allows `hostPID` and `privileged`)
-
-The SCC grants privileged access so the container can read `/proc/<pid>/environ` across container boundaries (SELinux otherwise blocks this). This simulates a misconfigured namespace where a debugging or monitoring tool has been granted elevated privileges.
-
-### 3. Deploy sandbox templates and warm pools
+### 2. Verify warm pools are ready
 
 ```bash
-oc apply -f sandbox-templates/
+oc get sandboxwarmpools -n runc-warmpool
+oc get sandboxwarmpools -n kata-warmpool
 ```
 
-This creates:
-- `code-execution-template-runc-hostpid` — runc with `hostPID: true` (VULNERABLE)
-- `code-execution-template-kata-hostpid` — kata with `hostPID: true` (PROTECTED)
-- `code-sandbox-pool-runc-hostpid` — warm pool for runc
-- `code-sandbox-pool-kata-hostpid` — warm pool for kata
+### 3. Run the attack (runc — vulnerable)
 
-Wait for warm pools to be ready:
+The agent-backend starts pointing at `runc-warmpool`. Open the Chat UI and paste the credential theft code from [`attack-payloads/ATTACKS.md`](attack-payloads/ATTACKS.md), then click **Run**.
 
-```bash
-oc get sandboxwarmpool -n llm-sandbox-demo
-```
-
-Verify sandbox pods landed on the same node as the payment-service (automatic via pod affinity):
-
-```bash
-oc get pods -n llm-sandbox-demo -l demo=hostpid-security -o wide
-```
-
-### 4. Point agent backend at the runc pool (vulnerable)
-
-```bash
-oc set env deployment/agent-backend -n llm-sandbox-demo WARMPOOL_NAME=code-sandbox-pool-runc-hostpid
-oc rollout status deployment/agent-backend -n llm-sandbox-demo
-```
-
-### 5. Run the attack
-
-Open the Chat UI and paste the credential theft code from [`attack-payloads/ATTACKS.md`](attack-payloads/ATTACKS.md), then click **Run**.
-
-With runc, you'll see credentials stolen from the payment-service pod:
+You'll see credentials stolen from the payment-service pod:
 
 ```
 PID 4521: python3 -c import time; print('Payment service running...')
@@ -89,14 +57,15 @@ PID 4521: python3 -c import time; print('Payment service running...')
   STOLEN  AWS_SECRET_ACCESS_KEY = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 ```
 
-### 6. Switch to kata (protected)
+### 4. Switch to kata (protected)
 
 ```bash
-oc set env deployment/agent-backend -n llm-sandbox-demo WARMPOOL_NAME=code-sandbox-pool-kata-hostpid
-oc rollout status deployment/agent-backend -n llm-sandbox-demo
+./switch-to-kata.sh
 ```
 
-### 7. Re-run the same attack
+This patches `SANDBOX_NAMESPACE=kata-warmpool` on the agent-backend and waits for the rollout.
+
+### 5. Re-run the same attack
 
 Same code, same pod spec, same `hostPID: true`. Output:
 
@@ -105,7 +74,40 @@ RESULT: No other pods' processes visible.
 VM isolation is working - /proc only shows this VM's processes.
 ```
 
-## Why this works
+### 6. Switch back to runc
+
+```bash
+./switch-to-runc.sh
+```
+
+## Quick Start (Manual Deployment)
+
+If deploying manually (not via the Helm chart), deploy the standalone resources:
+
+```bash
+# Deploy victim pod
+oc create namespace victim --dry-run=client -o yaml | oc apply -f -
+oc apply -f victim-pod/deployment.yaml
+oc rollout status deployment/payment-service -n victim
+
+# Deploy RBAC (SCC + ServiceAccount)
+oc apply -f rbac/scc-and-sa.yaml
+
+# Deploy sandbox templates and warm pools
+oc apply -f sandbox-templates/
+```
+
+Then use `oc set env` to switch the agent-backend between warm pool names:
+
+```bash
+# Runc (vulnerable)
+oc set env deployment/agent-backend -n llm-sandbox-demo WARMPOOL_NAME=code-sandbox-pool-runc-hostpid
+
+# Kata (protected)
+oc set env deployment/agent-backend -n llm-sandbox-demo WARMPOOL_NAME=code-sandbox-pool-kata-hostpid
+```
+
+## Why This Works
 
 **With runc**: The container shares the node's kernel. `hostPID: true` exposes every process on the node in `/proc`, and `privileged: true` grants the SELinux context (`spc_t`) needed to read `/proc/<pid>/environ` across container boundaries. Together, this lets the attack code read environment variables — passwords, API keys, tokens — from any pod on the same node.
 
@@ -115,10 +117,10 @@ VM isolation is working - /proc only shows this VM's processes.
 
 1. Show the victim pod running: `oc get pods -n victim -l app=payment-service`
 2. Point out its env vars contain secrets: `oc set env deployment/payment-service -n victim --list`
-3. Set `WARMPOOL_NAME=code-sandbox-pool-runc-hostpid` (runc)
+3. Confirm agent-backend targets runc: `oc get deployment agent-backend -n llm-sandbox-demo -o jsonpath='{.spec.template.spec.containers[0].env}'`
 4. Run **Attack 1** (credential theft) — show passwords on screen
 5. Run **Attack 2** (host recon) — show real node kernel, 300+ processes, 32GB RAM
-6. Switch to `WARMPOOL_NAME=code-sandbox-pool-kata-hostpid` (kata)
+6. Switch to kata: `./switch-to-kata.sh`
 7. Re-run the same attacks — show they return nothing
 8. Key message: **same pod spec, same RBAC — only the runtime changed**
 
@@ -131,29 +133,18 @@ VM isolation is working - /proc only shows this VM's processes.
 | Process count | 300+ (all node processes) | < 10 (VM only) |
 | Read other pods' files via /proc | Service account tokens, configs | No access |
 
-## Cleanup
-
-```bash
-# Remove demo resources
-oc delete -f sandbox-templates/
-oc delete -f rbac/scc-and-sa.yaml
-oc delete -f victim-pod/deployment.yaml
-
-# Restore default warm pool
-oc set env deployment/agent-backend -n llm-sandbox-demo WARMPOOL_NAME=code-sandbox-pool
-oc rollout status deployment/agent-backend -n llm-sandbox-demo
-```
-
 ## Directory Layout
 
 ```
 06-security-demo/
 ├── README.md                        # This file
+├── switch-to-kata.sh                # Switch agent-backend to kata-warmpool namespace
+├── switch-to-runc.sh                # Switch agent-backend back to runc-warmpool namespace
 ├── victim-pod/
 │   └── deployment.yaml              # Payment service with secrets in env vars
 ├── rbac/
 │   └── scc-and-sa.yaml             # Custom SCC (hostPID + privileged) + ServiceAccount
-├── sandbox-templates/
+├── sandbox-templates/               # Standalone templates (for manual deployment only)
 │   ├── runc-hostpid.yaml           # Runc template with hostPID (vulnerable)
 │   ├── runc-warmpool.yaml          # Warm pool for runc
 │   ├── kata-hostpid.yaml           # Kata template with hostPID (protected)
@@ -161,3 +152,5 @@ oc rollout status deployment/agent-backend -n llm-sandbox-demo
 └── attack-payloads/
     └── ATTACKS.md                   # Attack code + expected output
 ```
+
+In workshop mode (Helm chart), the resources in `victim-pod/`, `rbac/`, and `sandbox-templates/` are deployed by `bootstrap/templates/sandbox.yaml` and do not need to be applied manually.

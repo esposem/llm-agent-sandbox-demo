@@ -20,7 +20,3 @@ echo ""
 echo "=== Done ==="
 echo "The agent-backend now creates sandboxes in '$KATA_NS'"
 echo "which uses kata-remote runtime with VM isolation."
-echo ""
-echo "Try the same attack in the Chat UI:"
-echo '  import os; os.popen("cat /proc/1/environ").read().replace("\\x00","\\n")'
-echo "You should only see the sandbox container's own environment."

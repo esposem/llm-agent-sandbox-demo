@@ -29,7 +29,7 @@ metadata:
 # Victim payment-service
 # ===================================================================
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   name: payment-service
   namespace: victim
@@ -39,7 +39,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "2"
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: payment-service
@@ -147,14 +146,6 @@ spec:
       serviceAccountName: hostpid-demo-sa
       automountServiceAccountToken: true
       hostPID: true
-      affinity:
-        podAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchLabels:
-                app: payment-service
-            namespaceSelector: {}
-            topologyKey: kubernetes.io/hostname
       containers:
       - image: {{ .Values.agentSandbox.sandboxImage }}
         name: sandbox
@@ -217,14 +208,6 @@ spec:
       automountServiceAccountToken: true
       hostPID: true
       runtimeClassName: kata-remote
-      affinity:
-        podAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchLabels:
-                app: payment-service
-            namespaceSelector: {}
-            topologyKey: kubernetes.io/hostname
       containers:
       - image: {{ .Values.agentSandbox.sandboxImage }}
         name: sandbox

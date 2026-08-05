@@ -16,3 +16,6 @@ vertex:
   enabled: false
   project: ""
   region: us-east5
+
+agentSandbox:
+  channel: preview-0.9

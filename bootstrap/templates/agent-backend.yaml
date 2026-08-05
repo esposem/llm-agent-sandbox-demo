@@ -4,33 +4,6 @@ metadata:
   name: agent-backend
   namespace: {{ .Values.backend.namespace }}
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: sandbox-manager
-  namespace: {{ .Values.backend.namespace }}
-rules:
-  - apiGroups: ["agents.x-k8s.io", "extensions.agents.x-k8s.io"]
-    resources: ["sandboxes", "sandboxclaims", "sandboxwarmpools", "sandboxtemplates"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: [""]
-    resources: ["pods", "services"]
-    verbs: ["get", "list", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: agent-backend-sandbox
-  namespace: {{ .Values.backend.namespace }}
-subjects:
-  - kind: ServiceAccount
-    name: agent-backend
-    namespace: {{ .Values.backend.namespace }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: sandbox-manager
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -65,6 +38,8 @@ spec:
               value: "4096"
             - name: WARMPOOL_NAME
               value: {{ .Values.backend.warmPoolName | quote }}
+            - name: SANDBOX_NAMESPACE
+              value: {{ .Values.sandbox.runcNamespace | quote }}
             {{- if .Values.vertex.enabled }}
             - name: VERTEX_PROJECT
               value: {{ .Values.vertex.project | quote }}

@@ -17,8 +17,11 @@ vertex:
   project: ""
   region: us-east5
 
+sandbox:
+  runcNamespace: runc-warmpool
+  kataNamespace: kata-warmpool
+
 agentSandbox:
   channel: preview-0.9
-  runtimeClassName: ""
   sandboxImage: quay.io/eesposit/python-runtime-sandbox:latest
   warmPoolReplicas: 2

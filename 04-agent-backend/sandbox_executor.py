@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 WARMPOOL_NAME = os.getenv("WARMPOOL_NAME", "code-sandbox-pool")
 TEMPLATE_NAME = "code-execution-template"
-NAMESPACE = "llm-sandbox-demo"
+NAMESPACE = os.getenv("SANDBOX_NAMESPACE", "runc-warmpool")
 SANDBOX_TIMEOUT = 120
 ROUTER_URL = "http://sandbox-router-svc.agent-sandbox-system.svc.cluster.local:8080"
 

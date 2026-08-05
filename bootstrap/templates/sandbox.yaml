@@ -1,46 +1,294 @@
+{{- $runcNs := .Values.sandbox.runcNamespace }}
+{{- $kataNs := .Values.sandbox.kataNamespace }}
+{{- $backendNs := .Values.backend.namespace }}
+# ===================================================================
+# Namespaces for warm pools
+# ===================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $runcNs }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $kataNs }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: victim
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+---
+# ===================================================================
+# Victim payment-service
+# ===================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: victim
+  labels:
+    app: payment-service
+    demo: hostpid-security
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        demo: hostpid-security
+    spec:
+      containers:
+      - name: payment-service
+        image: registry.access.redhat.com/ubi9/python-311:latest
+        command: ["python3", "-c", "import time; print('Payment service running...'); [time.sleep(3600) for _ in iter(int, 1)]"]
+        env:
+        - name: DB_HOST
+          value: "prod-payments-db.internal.corp.net"
+        - name: DB_USER
+          value: "payments_admin"
+        - name: DB_PASSWORD
+          value: "xK9#mP2$vL5nQ8wR!jF3"
+        - name: STRIPE_SECRET_KEY
+          value: "sk_live_51Hb3gK2eZvKYlo2C0EXAMPLE"
+        - name: STRIPE_WEBHOOK_SECRET
+          value: "whsec_5GaP9kR2mN7xJ1vQ4bEXAMPLE"
+        - name: AWS_ACCESS_KEY_ID
+          value: "AKIAIOSFODNN7EXAMPLE"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        - name: ENCRYPTION_MASTER_KEY
+          value: "aes-256-gcm:dGhpcyBpcyBhIGRlbW8ga2V5"
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+---
+# ===================================================================
+# SCC for hostPID (shared across both namespaces)
+# ===================================================================
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: sandbox-hostpid-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: true
+allowHostPorts: false
+allowPrivilegedContainer: true
+allowPrivilegeEscalation: true
+allowedCapabilities:
+  - '*'
+defaultAddCapabilities: []
+requiredDropCapabilities: []
+fsGroup:
+  type: RunAsAny
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - projected
+  - secret
+users:
+  - system:serviceaccount:{{ $runcNs }}:hostpid-demo-sa
+  - system:serviceaccount:{{ $kataNs }}:hostpid-demo-sa
+---
+# ===================================================================
+# runc-warmpool: SA, SandboxTemplate, WarmPool
+# ===================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hostpid-demo-sa
+  namespace: {{ $runcNs }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
   name: code-execution-template
-  namespace: {{ .Values.backend.namespace }}
+  namespace: {{ $runcNs }}
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: "3"
 spec:
+  envVarsInjectionPolicy: Allowed
+  networkPolicyManagement: Managed
   podTemplate:
     metadata:
       labels:
         app: code-sandbox
+        demo: hostpid-security
     spec:
-      {{- if .Values.agentSandbox.runtimeClassName }}
-      runtimeClassName: {{ .Values.agentSandbox.runtimeClassName }}
-      {{- end }}
+      serviceAccountName: hostpid-demo-sa
+      automountServiceAccountToken: true
+      hostPID: true
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: payment-service
+            namespaceSelector: {}
+            topologyKey: kubernetes.io/hostname
       containers:
-        - name: sandbox
-          image: {{ .Values.agentSandbox.sandboxImage }}
-          ports:
-            - containerPort: 8888
-              protocol: TCP
-          resources:
-            requests:
-              cpu: 500m
-              memory: 512Mi
-            limits:
-              cpu: "2"
-              memory: 2Gi
+      - image: {{ .Values.agentSandbox.sandboxImage }}
+        name: sandbox
+        securityContext:
+          privileged: true
+        ports:
+        - containerPort: 8888
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
   service: true
-  networkPolicyManagement: Managed
-  envVarsInjectionPolicy: Allowed
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
   name: {{ .Values.backend.warmPoolName }}
-  namespace: {{ .Values.backend.namespace }}
+  namespace: {{ $runcNs }}
   annotations:
-    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-wave: "4"
 spec:
   replicas: {{ .Values.agentSandbox.warmPoolReplicas }}
   sandboxTemplateRef:
     name: code-execution-template
   updateStrategy:
     type: OnReplenish
+---
+# ===================================================================
+# kata-warmpool: SA, SandboxTemplate, WarmPool
+# ===================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hostpid-demo-sa
+  namespace: {{ $kataNs }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: code-execution-template
+  namespace: {{ $kataNs }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  envVarsInjectionPolicy: Allowed
+  networkPolicyManagement: Managed
+  podTemplate:
+    metadata:
+      labels:
+        app: code-sandbox
+        demo: hostpid-security
+    spec:
+      serviceAccountName: hostpid-demo-sa
+      automountServiceAccountToken: true
+      hostPID: true
+      runtimeClassName: kata-remote
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: payment-service
+            namespaceSelector: {}
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - image: {{ .Values.agentSandbox.sandboxImage }}
+        name: sandbox
+        securityContext:
+          privileged: true
+        ports:
+        - containerPort: 8888
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+  service: true
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: {{ .Values.backend.warmPoolName }}
+  namespace: {{ $kataNs }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  replicas: {{ .Values.agentSandbox.warmPoolReplicas }}
+  sandboxTemplateRef:
+    name: code-execution-template
+  updateStrategy:
+    type: OnReplenish
+---
+# ===================================================================
+# RBAC: agent-backend SA can manage sandboxes in both namespaces
+# ===================================================================
+{{- range list $runcNs $kataNs }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sandbox-manager
+  namespace: {{ . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+rules:
+  - apiGroups: ["agents.x-k8s.io", "extensions.agents.x-k8s.io"]
+    resources: ["sandboxes", "sandboxclaims", "sandboxwarmpools", "sandboxtemplates"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-backend-sandbox
+  namespace: {{ . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+subjects:
+  - kind: ServiceAccount
+    name: agent-backend
+    namespace: {{ $backendNs }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sandbox-manager
+---
+{{- end }}

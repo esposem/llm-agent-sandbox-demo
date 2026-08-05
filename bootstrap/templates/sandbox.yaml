@@ -1,0 +1,46 @@
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: code-execution-template
+  namespace: {{ .Values.backend.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app: code-sandbox
+    spec:
+      {{- if .Values.agentSandbox.runtimeClassName }}
+      runtimeClassName: {{ .Values.agentSandbox.runtimeClassName }}
+      {{- end }}
+      containers:
+        - name: sandbox
+          image: {{ .Values.agentSandbox.sandboxImage }}
+          ports:
+            - containerPort: 8888
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+  service: true
+  networkPolicyManagement: Managed
+  envVarsInjectionPolicy: Allowed
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: {{ .Values.backend.warmPoolName }}
+  namespace: {{ .Values.backend.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: {{ .Values.agentSandbox.warmPoolReplicas }}
+  sandboxTemplateRef:
+    name: code-execution-template
+  updateStrategy:
+    type: OnReplenish

@@ -2,12 +2,16 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: agent-sandbox-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 ---
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
   name: agent-sandbox-operator
   namespace: agent-sandbox-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec: {}
 ---
 apiVersion: operators.coreos.com/v1alpha1
@@ -15,6 +19,8 @@ kind: Subscription
 metadata:
   name: agent-sandbox-operator
   namespace: agent-sandbox-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   channel: {{ .Values.agentSandbox.channel | quote }}
   installPlanApproval: Automatic

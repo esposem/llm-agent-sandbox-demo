@@ -134,6 +134,7 @@ metadata:
   namespace: {{ $runcNs }}
   annotations:
     argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   envVarsInjectionPolicy: Allowed
   networkPolicyManagement: Managed
@@ -170,6 +171,7 @@ metadata:
   namespace: {{ $runcNs }}
   annotations:
     argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   replicas: {{ .Values.agentSandbox.warmPoolReplicas }}
   sandboxTemplateRef:
@@ -195,6 +197,7 @@ metadata:
   namespace: {{ $kataNs }}
   annotations:
     argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   envVarsInjectionPolicy: Allowed
   networkPolicyManagement: Managed
@@ -232,6 +235,7 @@ metadata:
   namespace: {{ $kataNs }}
   annotations:
     argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   replicas: {{ .Values.agentSandbox.warmPoolReplicas }}
   sandboxTemplateRef:

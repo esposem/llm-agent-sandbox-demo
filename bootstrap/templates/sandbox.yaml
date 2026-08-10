@@ -133,6 +133,7 @@ metadata:
   name: code-execution-template
   namespace: {{ $runcNs }}
   annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     argocd.argoproj.io/sync-wave: "3"
 spec:
   envVarsInjectionPolicy: Allowed
@@ -169,6 +170,7 @@ metadata:
   name: {{ .Values.backend.warmPoolName }}
   namespace: {{ $runcNs }}
   annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     argocd.argoproj.io/sync-wave: "4"
 spec:
   replicas: {{ .Values.agentSandbox.warmPoolReplicas }}
@@ -194,6 +196,7 @@ metadata:
   name: code-execution-template
   namespace: {{ $kataNs }}
   annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     argocd.argoproj.io/sync-wave: "3"
 spec:
   envVarsInjectionPolicy: Allowed
@@ -231,6 +234,7 @@ metadata:
   name: {{ .Values.backend.warmPoolName }}
   namespace: {{ $kataNs }}
   annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     argocd.argoproj.io/sync-wave: "4"
 spec:
   replicas: {{ .Values.agentSandbox.warmPoolReplicas }}

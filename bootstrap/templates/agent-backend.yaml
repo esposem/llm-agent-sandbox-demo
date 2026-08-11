@@ -25,6 +25,7 @@ spec:
       containers:
         - name: agent-backend
           image: {{ .Values.backend.image }}
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           env:

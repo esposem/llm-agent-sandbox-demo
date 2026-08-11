@@ -8,7 +8,7 @@ ui:
   image: docker.io/nginxinc/nginx-unprivileged:1.27-alpine
 
 llm:
-  model: granite-3-2-8b-instruct
+  model: llama-scout-17b
   apiUrl: ""
   apiKey: ""
 

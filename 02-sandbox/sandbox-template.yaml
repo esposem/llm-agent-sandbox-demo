@@ -9,7 +9,7 @@ spec:
       labels:
         app: code-sandbox
     spec:
-      runtimeClassName: kata-remote
+      runtimeClassName: kata
       containers:
         - name: sandbox
           image: quay.io/eesposit/python-runtime-sandbox:latest

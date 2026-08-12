@@ -209,10 +209,10 @@ wait_for_mcp kata-oc || exit 1
 # Wait for runtimeclass kata to be ready
 wait_for_runtimeclass kata || exit 1
 
-echo "############################ Wait for kata-remote + job ########################"
+echo "############################ Wait for kata + job ########################"
 
-# Wait for runtimeclass kata-remote to be ready
-wait_for_runtimeclass kata-remote || exit 1
+# Wait for runtimeclass kata to be ready
+wait_for_runtimeclass kata || exit 1
 
 # THIS IS A TEMPORARY FIX FOR THE KATA RPM. IT IS NOT OFFICIALLY SUPPORTED BY RED HAT.
 ARO_VERSION=$(oc version 2>/dev/null | grep "Server Version" | awk '{print $3}')

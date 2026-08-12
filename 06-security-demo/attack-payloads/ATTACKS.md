@@ -11,7 +11,7 @@ These attacks exploit `hostPID: true` + `privileged: true` to read data from oth
 | **`/proc/<pid>/environ`** | Readable (privileged bypasses SELinux) | No other-pod processes exist |
 | **Host info** | Real node kernel, CPU, memory | VM kernel, vCPU, allocated memory |
 
-The pod spec is **identical** — same `hostPID`, same `privileged`, same service account. The only difference is `runtimeClassName: kata-remote`.
+The pod spec is **identical** — same `hostPID`, same `privileged`, same service account. The only difference is `runtimeClassName: kata`.
 
 ---
 

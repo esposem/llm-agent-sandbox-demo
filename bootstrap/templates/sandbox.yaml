@@ -210,7 +210,7 @@ spec:
       serviceAccountName: hostpid-demo-sa
       automountServiceAccountToken: true
       hostPID: true
-      runtimeClassName: kata-remote
+      runtimeClassName: kata
       containers:
       - image: {{ .Values.agentSandbox.sandboxImage }}
         name: sandbox

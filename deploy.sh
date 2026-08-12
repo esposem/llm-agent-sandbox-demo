@@ -73,13 +73,13 @@ fi
 
 # ── Step 3: Deploy Sandbox Resources ─────────────────────────────
 info "=== Step 3: Setting Up Sandbox Warm Pools ==="
-info "(Requires: Agent Sandbox operator and kata-remote RuntimeClass)"
+info "(Requires: Agent Sandbox operator and kata RuntimeClass)"
 
 oc apply -f "$SCRIPT_DIR/02-sandbox/sandbox-template.yaml"
 oc apply -f "$SCRIPT_DIR/02-sandbox/warm-pool.yaml"
 
 info "Sandbox resources applied to $RUNC_NS."
-info "For kata-remote warm pool in $KATA_NS, deploy OSC first (see 01-operators/)."
+info "For kata warm pool in $KATA_NS, deploy OSC first (see 01-operators/)."
 
 # ── Step 4: Deploy Security Demo (Victim Pod + SCC) ──────────────
 info "=== Step 4: Deploying Security Demo Resources ==="
@@ -123,4 +123,4 @@ info "Next steps:"
 info "  1. Open https://$ROUTE in your browser"
 info "  2. Ask the assistant to write code, then click Run to execute it"
 info "  3. For the security demo, see 06-security-demo/README.md"
-info "  4. To switch to kata-remote: ./06-security-demo/switch-to-kata.sh"
+info "  4. To switch to kata: ./06-security-demo/switch-to-kata.sh"

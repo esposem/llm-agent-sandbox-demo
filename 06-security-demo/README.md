@@ -11,16 +11,16 @@ The sandbox pod runs with `hostPID: true` and `privileged: true`. In runc, this 
 | **Env var theft** | Read other pods' env vars via `/proc/<pid>/environ` | No other-pod processes exist in the VM |
 | **Host fingerprinting** | Real node kernel, CPU, memory | VM kernel, vCPU, allocated RAM |
 
-The pod spec is **identical** for both runtimes — same `hostPID`, same `privileged`, same service account. The only difference is `runtimeClassName: kata-remote`. Kata neutralizes the dangerous pod spec at the hardware level.
+The pod spec is **identical** for both runtimes — same `hostPID`, same `privileged`, same service account. The only difference is `runtimeClassName: kata`. Kata neutralizes the dangerous pod spec at the hardware level.
 
 ## How It Works
 
 In the workshop deployment (Helm chart via ArgoCD), the security demo is **pre-deployed** as part of the chart — no manual setup needed. The Helm chart creates:
 
-- **Two warm pool namespaces**: `runc-warmpool` (runc runtime) and `kata-warmpool` (kata-remote runtime)
+- **Two warm pool namespaces**: `runc-warmpool` (runc runtime) and `kata-warmpool` (kata runtime)
 - **Victim pod**: `payment-service` in the `victim` namespace with fake credentials in env vars
 - **SCC**: `sandbox-hostpid-demo` granting `hostPID` + `privileged` to sandbox SAs in both namespaces
-- **SandboxTemplates**: `code-execution-template` in each namespace (runc vs kata-remote), with pod affinity to the victim node
+- **SandboxTemplates**: `code-execution-template` in each namespace (runc vs kata), with pod affinity to the victim node
 - **WarmPools**: `code-sandbox-pool` in each namespace (2 replicas each)
 - **RBAC**: `agent-backend` SA in `llm-sandbox-demo` has `sandbox-manager` Role in both namespaces
 

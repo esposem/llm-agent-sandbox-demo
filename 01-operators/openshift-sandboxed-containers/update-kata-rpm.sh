@@ -26,8 +26,8 @@ fi
 NODE_NAME=$(oc get nodes -l workerType=kataWorker -o jsonpath='{.items[0].metadata.name}')
 DEBUG_POD_NAMESPACE=default
 
-if ! oc get runtimeclass kata-remote &> /dev/null; then
-    echo -e "ERROR: RuntimeClass 'kata-remote' not found. Did you install the KataConfig CR?" >&2
+if ! oc get runtimeclass kata &> /dev/null; then
+    echo -e "ERROR: RuntimeClass 'kata' not found. Did you install the KataConfig CR?" >&2
     exit 1
 fi
 

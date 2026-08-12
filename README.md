@@ -1,6 +1,6 @@
 # LLM Agent Sandbox Demo
 
-An end-to-end demo on OpenShift that lets you chat with an LLM through a custom chat UI. When you ask it to write code, you can execute it in isolated sandbox pods via the [Agent Sandbox Operator](https://github.com/openshift/kubernetes-sigs-agent-sandbox). A built-in security demo shows why Kata Containers matter: the same attack code steals credentials with runc but finds nothing with `kata-remote` VM isolation.
+An end-to-end demo on OpenShift that lets you chat with an LLM through a custom chat UI. When you ask it to write code, you can execute it in isolated sandbox pods via the [Agent Sandbox Operator](https://github.com/openshift/kubernetes-sigs-agent-sandbox). A built-in security demo shows why Kata Containers matter: the same attack code steals credentials with runc but finds nothing with `kata` VM isolation.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Namespaces:
   llm-sandbox-demo   ─ agent-backend Deployment + ServiceAccount
   web-ui             ─ chat UI (nginx) + Route
   runc-warmpool      ─ SandboxTemplate (runc, hostPID) + WarmPool
-  kata-warmpool      ─ SandboxTemplate (kata-remote, hostPID) + WarmPool
+  kata-warmpool      ─ SandboxTemplate (kata, hostPID) + WarmPool
   victim             ─ payment-service with fake credentials (security demo)
 ```
 
@@ -49,7 +49,7 @@ Namespaces:
 | **Agent Sandbox Operator** | Creates and manages isolated sandbox pods (installed by the Helm chart) |
 | **Warm Pools** | 2 pre-warmed pods in each namespace (`runc-warmpool` and `kata-warmpool`) ready for instant code execution |
 | **Chat UI** | Lightweight single-page chat app (nginx + HTML) with streaming, syntax highlighting, and Run buttons |
-| **OSC (OpenShift Sandboxed Containers)** | Provides the `kata-remote` RuntimeClass for VM-isolated sandboxes (installed by Ansible workload) |
+| **OSC (OpenShift Sandboxed Containers)** | Provides the `kata` RuntimeClass for VM-isolated sandboxes (installed by Ansible workload) |
 
 ## Deployment Modes
 
@@ -60,7 +60,7 @@ For the agent-sandbox workshop on RHDP, everything is deployed automatically:
 1. **AgnosticV** provisions an ARO cluster and runs infra workloads:
    - OpenShift GitOps (ArgoCD)
    - LiteMaaS (LLM access)
-   - `ocp4_workload_osc_configure_aro` (installs OSC, configures peer pods, creates `kata-remote` RuntimeClass)
+   - `ocp4_workload_osc_configure_aro` (installs OSC, configures peer pods, creates `kata` RuntimeClass)
    - `ocp4_workload_gitops_bootstrap` (creates ArgoCD Application pointing to `bootstrap/`)
    - Showroom (workshop instructions)
 
@@ -87,7 +87,7 @@ Prerequisites:
 - OpenShift 4.14+ cluster
 - `oc` CLI logged in as cluster-admin
 - Agent Sandbox operator already installed
-- For kata demo: OSC operator installed with `kata-remote` RuntimeClass (see `01-operators/`)
+- For kata demo: OSC operator installed with `kata` RuntimeClass (see `01-operators/`)
 - LLM endpoint (set `LLM_API_KEY` env var, or GCP credentials for Vertex AI)
 
 ## Helm Chart (bootstrap/)
@@ -137,7 +137,7 @@ agentSandbox:
 The agent-backend reads `SANDBOX_NAMESPACE` to decide which warm pool to claim sandboxes from. Both pools are pre-built and ready at deploy time.
 
 ```bash
-# Switch to kata-remote (VM isolation)
+# Switch to kata (VM isolation)
 ./06-security-demo/switch-to-kata.sh
 
 # Switch back to runc

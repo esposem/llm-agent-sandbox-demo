@@ -39,8 +39,13 @@ spec:
               value: "4096"
             - name: WARMPOOL_NAME
               value: {{ .Values.backend.warmPoolName | quote }}
+            # From ConfigMap/sandbox-runtime (not in Git) so runtime switches survive ArgoCD.
             - name: SANDBOX_NAMESPACE
-              value: {{ .Values.sandbox.runcNamespace | quote }}
+              valueFrom:
+                configMapKeyRef:
+                  name: sandbox-runtime
+                  key: SANDBOX_NAMESPACE
+                  optional: true
             {{- if .Values.vertex.enabled }}
             - name: VERTEX_PROJECT
               value: {{ .Values.vertex.project | quote }}

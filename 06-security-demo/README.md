@@ -24,7 +24,7 @@ In the workshop deployment (Helm chart via ArgoCD), the security demo is **pre-d
 - **WarmPools**: `code-sandbox-pool` in each namespace (2 replicas each)
 - **RBAC**: `agent-backend` SA in `llm-sandbox-demo` has `sandbox-manager` Role in both namespaces
 
-The agent-backend reads `SANDBOX_NAMESPACE` to decide which warm pool to claim pods from. Switching runtimes is a single env var change — no resources are created or deleted.
+The agent-backend reads `SANDBOX_NAMESPACE` to decide which warm pool to claim pods from. Switching runtimes updates ConfigMap `sandbox-runtime` and recycles the backend pod — ArgoCD does not manage that ConfigMap, so the change persists.
 
 ## Quick Start (Workshop Mode)
 
@@ -63,7 +63,7 @@ PID 4521: python3 -c import time; print('Payment service running...')
 ./switch-to-kata.sh
 ```
 
-This patches `SANDBOX_NAMESPACE=kata-warmpool` on the agent-backend and waits for the rollout.
+This sets `SANDBOX_NAMESPACE=kata-warmpool` on ConfigMap `sandbox-runtime` and recycles the agent-backend pod.
 
 ### 5. Re-run the same attack
 
@@ -117,7 +117,7 @@ oc set env deployment/agent-backend -n llm-sandbox-demo WARMPOOL_NAME=code-sandb
 
 1. Show the victim pod running: `oc get pods -n victim -l app=payment-service`
 2. Point out its env vars contain secrets: `oc set env deployment/payment-service -n victim --list`
-3. Confirm agent-backend targets runc: `oc get deployment agent-backend -n llm-sandbox-demo -o jsonpath='{.spec.template.spec.containers[0].env}'`
+3. Confirm agent-backend targets runc: `oc exec deploy/agent-backend -n llm-sandbox-demo -- printenv SANDBOX_NAMESPACE`
 4. Run **Attack 1** (credential theft) — show passwords on screen
 5. Run **Attack 2** (host recon) — show real node kernel, 300+ processes, 32GB RAM
 6. Switch to kata: `./switch-to-kata.sh`

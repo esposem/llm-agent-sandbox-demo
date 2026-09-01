@@ -67,7 +67,7 @@ For the agent-sandbox workshop on RHDP, everything is deployed automatically:
 2. **ArgoCD** syncs the **Helm chart** in `bootstrap/`, which deploys:
    - Agent Sandbox operator (Namespace + OperatorGroup + Subscription)
    - Namespaces: `llm-sandbox-demo`, `web-ui`, `runc-warmpool`, `kata-warmpool`, `victim`
-   - Agent backend with `SANDBOX_NAMESPACE=runc-warmpool`
+   - Agent backend (defaults to `runc-warmpool`; runtime switch uses ConfigMap `sandbox-runtime`)
    - Chat UI with Route
    - SandboxTemplates and WarmPools in both runc and kata namespaces
    - Victim payment-service pod (security demo)
@@ -144,7 +144,7 @@ The agent-backend reads `SANDBOX_NAMESPACE` to decide which warm pool to claim s
 ./06-security-demo/switch-to-runc.sh
 ```
 
-These scripts patch the `SANDBOX_NAMESPACE` env var on the agent-backend Deployment and wait for the rollout. ArgoCD self-heal is disabled, so the env var change persists.
+These scripts write `SANDBOX_NAMESPACE` to ConfigMap `sandbox-runtime` and recycle the agent-backend pod.
 
 ## Security Demo
 
@@ -201,7 +201,8 @@ oc get sandboxwarmpools -n kata-warmpool
 oc get sandboxes -n runc-warmpool
 
 # Check which namespace the agent-backend targets
-oc get deployment agent-backend -n llm-sandbox-demo -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -m json.tool
+oc exec deploy/agent-backend -n llm-sandbox-demo -- printenv SANDBOX_NAMESPACE
+oc get configmap sandbox-runtime -n llm-sandbox-demo -o jsonpath='{.data.SANDBOX_NAMESPACE}{"\n"}'
 
 # Check ArgoCD sync status (workshop mode)
 oc get application -n openshift-gitops

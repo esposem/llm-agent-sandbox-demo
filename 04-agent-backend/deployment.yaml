@@ -65,6 +65,12 @@ spec:
               value: "4096"
             - name: WARMPOOL_NAME
               value: "code-sandbox-pool"
+            - name: SANDBOX_NAMESPACE
+              valueFrom:
+                configMapKeyRef:
+                  name: sandbox-runtime
+                  key: SANDBOX_NAMESPACE
+                  optional: true
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: "/etc/gcp/application_default_credentials.json"
           resources:
